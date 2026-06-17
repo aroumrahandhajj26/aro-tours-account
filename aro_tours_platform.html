@@ -1496,10 +1496,11 @@ function cloudPush(){
   if(!currentUser)return;
   setCloudStatus("syncing");
   var data=JSON.stringify(getFullSyncData());
-  // Use GET with action=push to avoid CORS preflight
-  var url=CLOUD_URL+"?action=push&data="+encodeURIComponent(data);
-  fetch(url,{method:"GET"})
-  .then(function(res){
+  fetch(CLOUD_URL,{
+    method:"POST",
+    headers:{"Content-Type":"text/plain"},
+    body:data
+  }).then(function(res){
     if(!res.ok)throw new Error("push HTTP "+res.status);
     return res.json();
   }).then(function(j){
@@ -1514,20 +1515,23 @@ function cloudPush(){
 function cloudPull(silent){
   if(!currentUser)return;
   if(!silent)setCloudStatus("syncing");
-  fetch(CLOUD_URL+"?action=pull",{method:"GET"})
-  .then(function(res){if(!res.ok)throw new Error("pull HTTP "+res.status);return res.json();})
-  .then(function(data){
+  fetch(CLOUD_URL)
+  .then(function(res){if(!res.ok)throw new Error("pull HTTP "+res.status);return res.text();})
+  .then(function(text){
+    var data;
+    try{data=JSON.parse(text);}catch(e){
+      // try decode if URL-encoded
+      try{data=JSON.parse(decodeURIComponent(text.replace(/^data=/,"")));}
+      catch(e2){throw new Error("Invalid JSON: "+text.substring(0,80));}
+    }
     if(!data||(!data.docs&&!data.clients)){setCloudStatus("synced");return;}
     suppressCloudPush=true;
     var report=mergeBackupData(data);
     suppressCloudPush=false;
     renderHistory();renderInvList();renderRecList();populateRecInvDropdown();renderOffice();
     sto("aro_last_cloud_sync",Date.now());
-    if(report.newDocs>0||report.updatedDocs>0){
-      cloudPush();
-    }else{
-      setCloudStatus("synced");
-    }
+    if(report.newDocs>0||report.updatedDocs>0){cloudPush();}
+    else{setCloudStatus("synced");}
   }).catch(function(err){
     console.error("Cloud pull error:",err);
     setCloudStatus("error");
